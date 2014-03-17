@@ -27,3 +27,4 @@ twitcuiは、キャラクターベースのtwitterクライアントと見せか
 ##changes
 
 * ver 0.0.1 first import
+* ver 0.0.2 favoriteに対応／UTF-8 Macで書き込まれたツイートをなるべく読めるように

@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 
-use version; our $VERSION = qv('0.0.1');
+use version; our $VERSION = qv('0.0.2');
 use strict;
 use warnings;
 use utf8;
@@ -64,6 +64,10 @@ while( defined( my $cmd = $term->readline($ctw->get_mode().':$ ') ) ) {
   # r: リプライ
   if ( $cmd =~ m/^r\s*(\d*)/ ) {
     $ctw->reply($1);
+  };
+  # s: スターをつける
+  if ( $cmd =~ m/^s\s*(\d*)/ ) {
+    $ctw->favorite($1);
   };
   # d: 削除
   if ( $cmd =~ m/^d\s*(\d*)/ ) {
@@ -129,6 +133,7 @@ use utf8;
 use Date::Parse;
 use DateTime;
 use Encode;
+use Encode::UTF8Mac;
 use HTML::Entities;
 use Term::ANSIColor qw(:constants);
 use Term::ReadKey;
@@ -183,6 +188,27 @@ sub check_limit {
   print Dump $res;
 }
 
+
+# s:スターをつけます。引数$order
+sub favorite {
+  my $self   = shift;
+  my $order  = shift;
+  my $nt     = $self->{nt};
+  my $tlname = $self->get_mode();
+  unless ( $order ) {
+    my $str = $term->readline('favorite no.: ');
+    unless ( $str ) {
+      print RED "スター付与をキャンセルしました。\n", RESET;
+      return;
+    }
+    ( $order = $str ) =~ s/[^\d]*//g;
+  }
+  my $tl = $self->{timeline}->{$tlname}->get_tl();
+  my $item  = $tl->[ $order - 1 ]; 
+  print "$item->{user}->{screen_name} にスターをつける\n";
+  my $res = $nt->create_favorite( $item->{id} );
+  print decode_utf8( $nt->http_message )."\n";
+}
 
 # d:削除します。引数$order
 sub destroy {
@@ -362,7 +388,8 @@ sub _printitem {
       print "".($p?BLUE:CLEAR)." $item->{user}->{screen_name}を含めた$item->{retweet_count}人がリツイート";
     }
     print "\n";
-    print "".($p?BLUE:CLEAR).decode_entities("$item->{text}");
+    #print "".($p?BLUE:CLEAR). decode_entities("$item->{text}");
+    print "".($p?BLUE:CLEAR). decode('utf-8-mac', encode_utf8( decode_entities("$item->{text}") ) );
     print "\n";
     if ($p) {
       print BLUE "$dt ";
