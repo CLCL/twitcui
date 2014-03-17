@@ -13,11 +13,15 @@ twitcuiは、キャラクターベースのtwitterクライアントと見せか
     $ chmod 755 twitcui.pl
     $ ./twitcui.pl
 
+モノクロ表示（Term::ANSIColorのオプションを指定）
+
+    $ ANSI_COLORS_DISABLED=1 ./twitcui.pl
+
 ##files
 
 設置者が自分で準備し書き換える必要があるファイルは以下の通りです。
 
-* /twitter_keys.yaml : Twitter APIで使うconsumer_keyのペア
+* ./twitter_keys.yaml : Twitter APIで使うconsumer_keyのペア
 * ~/.pit/default.yaml: Config::Pitが参照するファイルで、使うユーザのaccess_tokenのペアを書いておきます（取得する時のkey指定は103行目で指定しています）。
 
 ##設置例
