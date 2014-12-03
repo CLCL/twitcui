@@ -211,13 +211,13 @@ sub friendships_lookup {
       $list = [ @$list, @$res ];
     }
   }
-  YAML::DumpFile( 'friendships.yaml', $list );
+  YAML::DumpFile( File::Spec->catdir( FindBin::Real::Bin(), 'friendships.yaml' ), $list );
   $self->parse_friendships();
 }
 
 sub parse_friendships {
   my $self = shift;
-  my $list = YAML::LoadFile( 'friendships.yaml');
+  my $list = YAML::LoadFile( File::Spec->catdir( FindBin::Real::Bin(), 'friendships.yaml' ) );
   foreach my $item ( @$list ) {
     unless ( grep { $_ eq 'followed_by'} @{$item->{connections}}) {
       push @$userlist, $item->{screen_name};
