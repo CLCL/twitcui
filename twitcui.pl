@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 
-use version; our $VERSION = qv('0.0.2');
+use version; our $VERSION = qv('0.0.3');
 use strict;
 use warnings;
 use utf8;
@@ -13,6 +13,8 @@ binmode STDOUT => ':utf8';
 my $ctw  = cuitwitter->new();
 my $term = Term::ReadLine->new('twitter client');
 my $OUT  = $term->OUT() || *STDOUT;
+
+my $userlist = [];
 
 # キー入力ループ
 
@@ -73,6 +75,10 @@ while( defined( my $cmd = $term->readline($ctw->get_mode().':$ ') ) ) {
   if ( $cmd =~ m/^d\s*(\d*)/ ) {
     $ctw->destroy($1);
   };
+  # I: フォロー状態調査
+  if ( $cmd =~ m/^I\s*(\d*)/ ) {
+    $ctw->friendships_lookup();
+  }
   # q: 終了
   if ( $cmd eq 's') { $ctw->check_limit(); };
   # q: 終了
@@ -149,7 +155,7 @@ sub new {
   my $max_id = "0";
   # $mentions_id（mentions前回取得時の最大のstatus_idを記録）
   my $mentions_max_id = "0";
-  # 現在のタイムライン保持 $tl
+  # 現在のタイムライン保持 $timeline
   my $timeline = {
     home_timeline  => Home_timeline ->new(),
     mentions       => Mentions      ->new(),
@@ -160,6 +166,7 @@ sub new {
   my $mode = 'home_timeline';
   #
   my $range = 5;
+  # 現在のフォローされていないリスト $userlist
   # オブジェクトに登録
   my $self = cuitwit->new(
     mode     => $mode,
@@ -167,7 +174,9 @@ sub new {
     timeline => $timeline,
     @_);
   # bless
-  return bless $self, $class;
+  my $obj = bless $self, $class;
+  $self->parse_friendships();
+  return $obj;
 }
 
 sub set_mode {
@@ -188,6 +197,35 @@ sub check_limit {
   print Dump $res;
 }
 
+sub friendships_lookup {
+  my $self = shift;
+  my $nt   = $self->{nt};
+  my $res  = $nt->friends_ids();
+  my $ids = $res->{ids};
+  my $list = [];
+  while ( my @t = splice (@$ids, 0, 100) ) {
+    $res = $nt->lookup_friendships(
+      {user_id => \@t }
+    );
+    if ( $res ) {
+      $list = [ @$list, @$res ];
+    }
+  }
+  YAML::DumpFile( File::Spec->catdir( FindBin::Real::Bin(), 'friendships.yaml' ), $list );
+  $self->parse_friendships();
+}
+
+sub parse_friendships {
+  my $self = shift;
+  my $list = YAML::LoadFile( File::Spec->catdir( FindBin::Real::Bin(), 'friendships.yaml' ) );
+  foreach my $item ( @$list ) {
+    unless ( grep { $_ eq 'followed_by'} @{$item->{connections}}) {
+      push @$userlist, $item->{screen_name};
+    }
+  }
+  $self->{userlist} = $userlist;
+  return $userlist;
+}
 
 # s:スターをつけます。引数$order
 sub favorite {
@@ -343,27 +381,35 @@ sub show_tl {
   print CLEAR '=' x $wchar ,"\n";
   for ( my $i = $from -1; $i < $to;  $i++ ) {
     my $item = $tl->[$i];
-    _printitem($i, $item);
+    _printitem($i, $item, $self->{userlist});
   }
 }
 
 sub _printitem {
   my $i = shift;
   my $item = shift;
+  my $userlist = shift;
   my $t = str2time($item->{created_at});
   my $dt = DateTime->from_epoch(epoch => $t)->set_time_zone('Asia/Tokyo');
   (my $wchar, my $hchar, my $wpixels, my $hpixels) = eval{GetTerminalSize()};
   $wchar = 30 unless $wchar;
-  my $p = $item->{past};
+  my $p = $item->{past}; # $pは過去postでないときundefined
+  my $temp_screen_name = $item->{user}->{screen_name};
+  if ( grep { $_ eq $temp_screen_name } @$userlist ) {
+    $temp_screen_name ="[" . $temp_screen_name . "]";
+  }
   if ($item->{retweeted_status} ) {
+    # 取得ポストがリツイートポストの場合
     print "".($p?BLUE:CLEAR) . ( $i + 1 ) . ". ";
     if ($p) {
+      # 過去ポストのときは名前は青で表示
       print BOLD BLUE "RT ".$item->{retweeted_status}->{user}->{screen_name}, CLEAR;
     } else {
+      # ポストが新規取得分のときは名前はシアンで表示
       print BOLD CYAN "RT ".$item->{retweeted_status}->{user}->{screen_name}, CLEAR;
     }
     if ( $item->{retweet_count} ) {
-      print "".($p?BLUE:CLEAR)." $item->{user}->{screen_name}を含めた$item->{retweet_count}人がリツイート";
+      print "".($p?BLUE:CLEAR)." ${temp_screen_name}を含めた$item->{retweet_count}人がリツイート";
     }
     print "\n";
     print "".($p?BLUE:CYAN).decode_entities("$item->{retweeted_status}->{text}");
@@ -378,14 +424,18 @@ sub _printitem {
     print "".($p?BLUE:CLEAR). '-' x $wchar ,CLEAR,"\n";
   } 
   else {
+    # 取得ポストが普通のポスト（リツイートじゃない）場合
     print "".($p?BLUE:CLEAR) . ( $i + 1 ) . ". ";
     if ($p) {
-      print BOLD BLUE   $item->{user}->{screen_name}, CLEAR;
-    } else {
-      print BOLD YELLOW $item->{user}->{screen_name}, CLEAR;
+      # 過去ポストのときは名前は青で表示
+      print BOLD BLUE   $temp_screen_name, CLEAR;
+    }
+    else {
+      # ポストが新規取得分のときは名前はシアンで表示
+      print BOLD YELLOW $temp_screen_name, CLEAR;
     }
     if ( $item->{retweet_count} ) {
-      print "".($p?BLUE:CLEAR)." $item->{user}->{screen_name}を含めた$item->{retweet_count}人がリツイート";
+      print "".($p?BLUE:CLEAR)." ${temp_screen_name}を含めた$item->{retweet_count}人がリツイート";
     }
     print "\n";
     #print "".($p?BLUE:CLEAR). decode_entities("$item->{text}");
